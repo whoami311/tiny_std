@@ -11,6 +11,8 @@
 
 #include <iostream>
 
+#include "smart_ptr/unique_ptr.h"
+
 int main() {
     std::cout << "hello world" << std::endl;
     return 0;
