@@ -37,6 +37,32 @@ public:
 
 public:
     uniq_ptr_impl() = default;
+    uniq_ptr_impl(pointer ptr) : ptr_(ptr) {}
+
+    uniq_ptr_impl(uniq_ptr_impl&& u) noexcept : ptr_(u.ptr_), deleter_(u.deleter_) {
+        u.ptr_ = nullptr;
+    }
+
+    uniq_ptr_impl& operator=(uniq_ptr_impl&& u) noexcept {
+        return this;
+    }
+
+public:
+    pointer& GetPtr() {
+        return ptr_;
+    }
+
+    pointer GetPtr() const {
+        return ptr_;
+    }
+
+    D& GetDeleter() {
+        return deleter_;
+    }
+
+    D GetDeleter() const {
+        return deleter_;
+    }
 
 private:
     pointer ptr_;
