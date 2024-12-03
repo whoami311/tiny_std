@@ -39,11 +39,16 @@ public:
     uniq_ptr_impl() = default;
     uniq_ptr_impl(pointer ptr) : ptr_(ptr) {}
 
+    template<typename Del>
+    uniq_ptr_impl(pointer ptr, Del&& deleter) : ptr_(ptr), deleter_(std::forward<Del>(deleter)) {}
+
     uniq_ptr_impl(uniq_ptr_impl&& u) noexcept : ptr_(u.ptr_), deleter_(u.deleter_) {
         u.ptr_ = nullptr;
     }
 
     uniq_ptr_impl& operator=(uniq_ptr_impl&& u) noexcept {
+        Reset(u.Release());
+        deleter_ = std::forward<D>(u.deleter_());
         return this;
     }
 
@@ -62,6 +67,20 @@ public:
 
     D GetDeleter() const {
         return deleter_;
+    }
+
+    void Reset(pointer ptr) {
+        const pointer old_ptr = ptr_;
+        ptr_ = ptr;
+        if (old_ptr) {
+            deleter_(old_ptr);
+        }
+    }
+
+    pointer Release() {
+        pointer t = ptr_;
+        ptr_ = nullptr;
+        return t;
     }
 
 private:
