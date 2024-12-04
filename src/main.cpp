@@ -10,6 +10,7 @@
  */
 
 #include <iostream>
+#include <algorithm>
 
 #include "smart_ptr/unique_ptr.h"
 

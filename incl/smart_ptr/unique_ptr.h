@@ -83,6 +83,11 @@ public:
         return t;
     }
 
+    void swap(uniq_ptr_impl& rhs) {
+        std::swap(ptr_, rhs.ptr_);
+        std::swap(deleter_, rhs.deleter_);
+    }
+
 private:
     pointer ptr_;
     D deleter_;
@@ -91,12 +96,58 @@ private:
 template <typename T, typename D = def_delete<T>>
 class unique_ptr {
 public:
-    using pointer = T*;
-    using element = T;
+    using pointer = typename uniq_ptr_impl<T, D>::pointer;
+    using element_type = T;
+    using deleter_type = D;
 
 public:
     unique_ptr() : impl_() {}
-    unique_ptr(pointer p) : impl_(p) {}
+
+    explicit unique_ptr(pointer ptr) : impl_(ptr) {}
+
+    unique_ptr(pointer ptr, const deleter_type& deleter) : impl_(ptr, deleter) {}
+
+    unique_ptr(nullptr_t) : impl_() {}
+
+    unique_ptr(unique_ptr&& ptr) = default;
+
+    ~unique_ptr() {
+        auto& ptr = impl_.GetPtr();
+        if (ptr != nullptr)
+            impl_.GetDeleter()(ptr);
+        ptr = nullptr;
+    }
+
+    unique_ptr& operator=(unique_ptr&&) = default;
+
+    unique_ptr& operator=(nullptr_t) {
+        reset();
+        return *this;
+    }
+
+    element_type operator*() const {
+        return *get();
+    }
+
+    pointer operator->() const {
+        return get();
+    }
+
+    pointer get() const {
+        return impl_.GetPtr();
+    }
+
+    deleter_type& get_deleter() {
+        return impl_.GetDeleter();
+    }
+
+    const deleter_type& get_deleter() const {
+        return impl_.GetDeleter();
+    }
+
+    void reset() {
+        impl_.Reset();
+    }
 
 private:
     uniq_ptr_impl<T, D> impl_;
