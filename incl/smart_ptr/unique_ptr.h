@@ -111,6 +111,8 @@ public:
 
     unique_ptr(unique_ptr&& ptr) = default;
 
+    unique_ptr(const unique_ptr&) = delete;
+
     ~unique_ptr() {
         auto& ptr = impl_.GetPtr();
         if (ptr != nullptr)
@@ -119,6 +121,8 @@ public:
     }
 
     unique_ptr& operator=(unique_ptr&&) = default;
+
+    unique_ptr& operator=(const unique_ptr&) = delete;
 
     unique_ptr& operator=(nullptr_t) {
         reset();
@@ -145,8 +149,22 @@ public:
         return impl_.GetDeleter();
     }
 
-    void reset() {
-        impl_.Reset();
+    operator bool() const {
+        return !(get() == pointer());
+    }
+
+    // Modifiers
+
+    pointer release() {
+        return impl_.Release();
+    }
+
+    void reset(pointer ptr = pointer()) {
+        impl_.Reset(ptr);
+    }
+
+    void swap(unique_ptr& u) {
+        impl_.swap(u.impl_);
     }
 
 private:
