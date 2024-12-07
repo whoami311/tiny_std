@@ -171,4 +171,20 @@ private:
     uniq_ptr_impl<T, D> impl_;
 };
 
+template<typename T, typename D>
+class unique_ptr<T[], D> {
+public:
+    using pointer = typename uniq_ptr_impl<T, D>::pointer;
+    using element_type = T;
+    using deleter_type = D;
+
+public:
+    unique_ptr() {}
+
+    
+
+private:
+    uniq_ptr_impl<T, D> impl_;
+};
+
 }  // namespace tiny_std
