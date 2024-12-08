@@ -328,4 +328,39 @@ private:
     uniq_ptr_impl<T, D> impl_;
 };
 
+template<typename Tp, typename Dp>
+inline void swap(unique_ptr<Tp, Dp>& x, unique_ptr<Tp, Dp>& y) {
+    x.swap(y);
+}
+
+template<typename Tp, typename Dp, typename Up, typename Ep>
+inline bool operator==(const unique_ptr<Tp, Dp>& x, const unique_ptr<Up, Ep>& y) {
+    return x.get() == y.get();
+}
+
+template<typename Tp, typename Dp>
+inline bool operator==(const unique_ptr<Tp, Dp>& x, nullptr_t) {
+    return !x;
+}
+
+template<typename Tp, typename Dp>
+inline bool operator==(nullptr_t, const unique_ptr<Tp, Dp>& x) {
+    return !x;
+}
+
+template<typename Tp, typename Dp, typename Up, typename Ep>
+inline bool operator!=(const unique_ptr<Tp, Dp>& x, const unique_ptr<Up, Ep>& y) {
+    return x.get() != y.get();
+}
+
+template<typename Tp, typename Dp>
+inline bool operator!=(const unique_ptr<Tp, Dp>& x, nullptr_t) {
+    return static_cast<bool>(x);
+}
+
+template<typename Tp, typename Dp>
+inline bool operator!=(nullptr_t, const unique_ptr<Tp, Dp>& x) {
+    return static_cast<bool>(x);
+}
+
 }  // namespace tiny_std
