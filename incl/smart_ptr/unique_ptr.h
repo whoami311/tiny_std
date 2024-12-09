@@ -328,39 +328,67 @@ private:
     uniq_ptr_impl<T, D> impl_;
 };
 
-template<typename Tp, typename Dp>
+template <typename Tp, typename Dp>
 inline void swap(unique_ptr<Tp, Dp>& x, unique_ptr<Tp, Dp>& y) {
     x.swap(y);
 }
 
-template<typename Tp, typename Dp, typename Up, typename Ep>
+template <typename Tp, typename Dp, typename Up, typename Ep>
 inline bool operator==(const unique_ptr<Tp, Dp>& x, const unique_ptr<Up, Ep>& y) {
     return x.get() == y.get();
 }
 
-template<typename Tp, typename Dp>
+template <typename Tp, typename Dp>
 inline bool operator==(const unique_ptr<Tp, Dp>& x, nullptr_t) {
     return !x;
 }
 
-template<typename Tp, typename Dp>
+template <typename Tp, typename Dp>
 inline bool operator==(nullptr_t, const unique_ptr<Tp, Dp>& x) {
     return !x;
 }
 
-template<typename Tp, typename Dp, typename Up, typename Ep>
+template <typename Tp, typename Dp, typename Up, typename Ep>
 inline bool operator!=(const unique_ptr<Tp, Dp>& x, const unique_ptr<Up, Ep>& y) {
     return x.get() != y.get();
 }
 
-template<typename Tp, typename Dp>
+template <typename Tp, typename Dp>
 inline bool operator!=(const unique_ptr<Tp, Dp>& x, nullptr_t) {
     return static_cast<bool>(x);
 }
 
-template<typename Tp, typename Dp>
+template <typename Tp, typename Dp>
 inline bool operator!=(nullptr_t, const unique_ptr<Tp, Dp>& x) {
     return static_cast<bool>(x);
 }
+
+template <typename T>
+struct MakeUniq {
+    using single_object = unique_ptr<T>;
+};
+
+template <typename T>
+struct MakeUniq<T[]> {
+    using array = unique_ptr<T[]>;
+};
+
+template <typename T, size_t Bound>
+struct MakeUniq<T[Bound]> {
+    struct invalid_type {};
+};
+
+template <typename T, typename... Args>
+inline typename MakeUniq<T>::single_object make_unique(Args&&... args) {
+    return unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
+
+template <typename T>
+inline typename MakeUniq<T>::array make_unique(size_t num) {
+    return unique_ptr<T>(new std::remove_extent_t<T>[num]());
+}
+
+template <typename T, typename Args>
+typename MakeUniq<T>::invalid_type make_unique(Args&&...) = delete;
 
 }  // namespace tiny_std
