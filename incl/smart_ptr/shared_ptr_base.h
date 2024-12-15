@@ -85,6 +85,8 @@ private:
     std::atomic<int> weak_cnt_;
 };
 
+class SpCountedDeleter {};
+
 template <typename Ptr>
 class SpCountedPtr final : public SpCountedBase {
 public:
