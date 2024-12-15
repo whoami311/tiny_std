@@ -85,7 +85,10 @@ private:
     std::atomic<int> weak_cnt_;
 };
 
-class SpCountedDeleter {};
+class WeakCount;
+
+// TODO: 
+// class SpCountedDeleter {};
 
 template <typename Ptr>
 class SpCountedPtr final : public SpCountedBase {
@@ -139,15 +142,45 @@ public:
     template <typename Ptr, typename Deleter>
     SharedCount(Ptr p, Deleter d) : SharedCount(p, std::move(d)) {}
 
-    template <typename Tp, typename Del>
-    explicit SharedCount(tiny_std::unique_ptr<Tp, Del>&& r) : pi_(0) {
-        if (r.get() == nullptr)
-            return;
-        
+    // TODO: constructor for unique_ptr
+    // template <typename Tp, typename Del>
+    // explicit SharedCount(tiny_std::unique_ptr<Tp, Del>&& r) : pi_(0) {
+    //     if (r.get() == nullptr)
+    //         return;
+    // }
+
+    // template <typename Tp, typename Del>
+    // explicit SharedCount(tiny_std::unique_ptr<Tp, Del>&& r)
+
+    explicit SharedCount(const WeakCount& r);
+
+    ~SharedCount() {
+        if (pi_ != nullptr)
+            pi_->Release();
+    }
+
+    SharedCount(const SharedCount& r) : pi_(r.pi_) {
+        if (pi_ != nullptr) {
+            pi_->AddRefCopy();
+        }
+    }
+
+    SharedCount& operator=(const SharedCount& r) {
+        SpCountedBase* tmp = r.pi_;
+        if (tmp != pi_) {
+            if (tmp != nullptr)
+                tmp->AddRefCopy();
+            if (pi_ != nullptr)
+                pi_->Release();
+            pi_ = tmp;
+        }
+        return *this;
     }
 
 private:
     SpCountedBase* pi_;
 };
+
+
 
 }  // namespace tiny_std
