@@ -85,6 +85,9 @@ private:
     std::atomic<int> weak_cnt_;
 };
 
+template<typename Tp>
+class SharedPtr;
+
 class WeakCount;
 
 // TODO: 
@@ -177,10 +180,131 @@ public:
         return *this;
     }
 
+    void Swap(SharedCount& r) {
+        SpCountedBase* tmp = r.pi_;
+        r.pi_ = pi_;
+        pi_ = tmp;
+    }
+
+    int GetUseCount() const {
+        return pi_ ? pi_->GetUseCnt() : 0;
+    }
+
+    bool Unique() const {
+        return GetUseCount() == 1;
+    }
+
+    void* GetDeleter(const std::type_info& ti) const {
+        return pi_ ? pi_->GetDeleter(ti) : nullptr;
+    }
+
+    friend inline bool operator==(const SharedCount& a, const SharedCount& b) {
+        return a.pi_ == b.pi_;
+    }
+
 private:
+    friend class WeakCount;
     SpCountedBase* pi_;
 };
 
+class WeakCount {
+public:
+    WeakCount() : pi_(nullptr) {}
 
+    WeakCount(const SharedCount& r) : pi_(r.pi_) {
+        if (pi_ != nullptr)
+            pi_->WeakAddRef();
+    }
+
+    WeakCount(const WeakCount& r) : pi_(r.pi_) {
+        if (pi_ != nullptr)
+            pi_->WeakAddRef();
+    }
+
+    WeakCount(WeakCount&& r) : pi_(r.pi_) {
+        r.pi_ = nullptr;
+    }
+
+    ~WeakCount() {
+        if (pi_ != nullptr)
+            pi_->WeakRelease();
+    }
+
+    WeakCount& operator=(const SharedCount& r) {
+        SpCountedBase* tmp = r.pi_;
+        if (tmp != nullptr)
+            tmp->WeakAddRef();
+        if (r.pi_ != nullptr)
+            r.pi_->WeakRelease();
+        pi_ = tmp;
+        return *this;
+    }
+
+    WeakCount& operator=(const WeakCount& r) {
+        SpCountedBase* tmp = r.pi_;
+        if (tmp != nullptr)
+            tmp->WeakAddRef();
+        if (r.pi_ != nullptr)
+            r.pi_->WeakRelease();
+        pi_ = tmp;
+        return *this;
+    }
+
+    WeakCount& operator=(WeakCount&& r) {
+        if (pi_ != nullptr)
+            pi_->WeakRelease();
+        pi_ = r.pi_;
+        r.pi_ = nullptr;
+        return *this;
+    }
+
+    void Swap(WeakCount& r) {
+        SpCountedBase* tmp = r.pi_;
+        r.pi_ = pi_;
+        pi_ = tmp;
+    }
+
+    int GetUseCount() const {
+        return pi_ != nullptr ? pi_->GetUseCnt() : 0;
+    }
+
+    friend inline bool operator==(const WeakCount& a, const WeakCount& b) {
+        return a.pi_ == b.pi_;
+    }
+
+private:
+    friend class SharedCount;
+    SpCountedBase* pi_;
+};
+
+inline SharedCount::SharedCount(const WeakCount& r) : pi_(r.pi_) {
+    if (pi_ && !pi_->AddRefLock())
+        pi_ = nullptr;
+}
+
+template <typename Tp, bool = std::is_array<Tp>::value, bool = std::is_void<Tp>::value>
+class SharedPtrAccess {
+public:
+    using element_type = Tp;
+
+    element_type& operator*() const {
+        return *Get();
+    }
+
+    element_type* operator->() const {
+        return Get();
+    }
+
+private:
+    element_type* Get() const {
+        return static_cast<const SharedPtr<Tp>*>(this)->Get();
+    }
+};
+
+template <typename Tp>
+class SharedPtrAccess<Tp, false, true> {
+public:
+    using element_type = Tp;
+};
 
 }  // namespace tiny_std
