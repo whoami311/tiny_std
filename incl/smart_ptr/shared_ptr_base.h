@@ -85,12 +85,15 @@ private:
     std::atomic<int> weak_cnt_;
 };
 
-template<typename Tp>
+template <typename Tp>
 class SharedPtr;
+
+template <typename Tp>
+class WeakPtr;
 
 class WeakCount;
 
-// TODO: 
+// TODO:
 // class SpCountedDeleter {};
 
 template <typename Ptr>
@@ -282,6 +285,30 @@ inline SharedCount::SharedCount(const WeakCount& r) : pi_(r.pi_) {
         pi_ = nullptr;
 }
 
+template <typename Up, size_t Nm, typename Yp, typename = void>
+struct SpIsConstructibleArrN : std::false_type {};
+
+template <typename Up, size_t Nm, typename Yp>
+struct SpIsConstructibleArrN<Up, Nm, Yp, std::__void_t<Yp[Nm]>> : std::is_convertible<Yp (*)[Nm], Up (*)[Nm]>::type {};
+
+template <typename Up, typename Yp, typename = void>
+struct SpIsConstructibleArr : std::false_type {};
+
+template <typename Up, typename Yp>
+struct SpIsConstructibleArr<Up, Yp, std::__void_t<Yp[]>> : std::is_convertible<Yp (*)[], Up (*)[]>::type {};
+
+template <typename Tp, typename Yp>
+struct SpIsConstructible;
+
+template <typename Up, size_t Nm, typename Yp>
+struct SpIsConstructible<Up[Nm], Yp> : SpIsConstructibleArrN<Up, Nm, Up>::type {};
+
+template <typename Up, typename Yp>
+struct SpIsConstructible<Up[], Yp> : SpIsConstructibleArr<Up, Yp>::type {};
+
+template <typename Tp, typename Yp>
+struct SpIsConstructible : std::is_convertible<Yp*, Tp*>::type {};
+
 template <typename Tp, bool = std::is_array<Tp>::value, bool = std::is_void<Tp>::value>
 class SharedPtrAccess {
 public:
@@ -305,6 +332,41 @@ template <typename Tp>
 class SharedPtrAccess<Tp, false, true> {
 public:
     using element_type = Tp;
+
+    element_type* operator->() const {
+        auto ptr = static_cast<const SharedPtr<Tp>*>(this)->Get();
+        return ptr;
+    }
+};
+
+template <typename Tp>
+class SharedPtrAccess<Tp, true, false> {
+public:
+    using element_type = typename std::remove_extent<Tp>::type;
+
+    element_type& operator[](std::ptrdiff_t i) const {
+        return Get()[i];
+    }
+
+private:
+    element_type* Get() const {
+        return static_cast<const SharedPtr<Tp>*>(this)->Get();
+    }
+};
+
+template <typename Tp>
+class SharedPtr : public SharedPtrAccess<Tp> {
+public:
+    using element_type = typename std::remove_extent<Tp>::type;
+
+public:
+    using weak_type = WeakPtr<Tp>;
+
+    SharedPtr() : ptr_(0), ref_count_() {}
+
+private:
+    element_type* ptr_;
+    SharedCount ref_count_;
 };
 
 }  // namespace tiny_std
