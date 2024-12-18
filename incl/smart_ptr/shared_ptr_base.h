@@ -359,10 +359,59 @@ class SharedPtr : public SharedPtrAccess<Tp> {
 public:
     using element_type = typename std::remove_extent<Tp>::type;
 
+private:
+    template <typename Yp>
+    using SafeConv = typename std::enable_if<SpIsConstructible<Tp, Yp>::value>::type;
+
 public:
     using weak_type = WeakPtr<Tp>;
 
     SharedPtr() : ptr_(0), ref_count_() {}
+
+    template <typename Yp, typename = SafeConv<Yp>>
+    explicit SharedPtr(Yp* p) : ptr_(p), ref_count_(p, typename std::is_array<Tp>::type()) {
+        EnableSharedFromThisWith(p);
+    }
+
+    template <typename Yp, typename Deleter, typename = SafeConv<Yp>>
+    SharedPtr(Yp* p, Deleter d) : ptr_(p), ref_count_(p, std::move(d)) {
+        EnableSharedFromThisWith(p);
+    }
+
+    template <typename Deleter>
+    SharedPtr(std::nullptr_t p, Deleter d) : ptr_(0), ref_count_(p, std::move(d)) {}
+
+    template <typename Yp>
+    SharedPtr(const SharedPtr<Yp>& r, element_type* p) : ptr_(p), ref_count_(r.ref_count_) {}
+
+    template <typename Yp>
+    SharedPtr(SharedPtr<Yp>&& r, element_type* p) : ptr_(p), ref_count_() {
+        ref_count_.Swap(r.ref_count_);
+        r.ptr_ = nullptr;
+    }
+
+    SharedPtr(const SharedPtr&) = default;
+    SharedPtr& operator=(const SharedPtr&) = default;
+    ~SharedPtr() = default;
+
+private:
+    template <typename Yp>
+    using esft_base_t = decltype(EnableSharedFromThisBase(std::declval<const SharedCount&>(), std::declval<Yp*>()));
+
+    template <typename Yp, typename = void>
+    struct HasEsftBase : std::false_type {};
+
+    template <typename Yp>
+    struct HasEsftBase<Yp, std::__void_t<esft_base_t<Yp>>> : std::__not_<std::is_array<Tp>> {};
+
+    template <typename Yp, typename Yp2 = typename std::remove_cv<Yp>::type>
+    typename std::enable_if<HasEsftBase<Yp2>::value>::type EnableSharedFromThisWith(Yp* p) {
+        if (auto base = EnableSharedFromThisBase(ref_count_, p))
+            base->WeakAssign(const_cast<Yp2*>(p), ref_count_);
+    }
+
+    template <typename Yp, typename Yp2 = typename std::remove_cv<Yp>::type>
+    typename std::enable_if<!HasEsftBase<Yp2>::value>::type EnableSharedFromThisWith(Yp*) {}
 
 private:
     element_type* ptr_;
