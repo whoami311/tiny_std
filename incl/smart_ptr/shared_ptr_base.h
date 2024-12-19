@@ -285,6 +285,24 @@ inline SharedCount::SharedCount(const WeakCount& r) : pi_(r.pi_) {
         pi_ = nullptr;
 }
 
+template <typename Yp_ptr, typename Tp_ptr>
+struct SpCompatibleWith : std::false_type {};
+
+template <typename Yp, typename Tp>
+struct SpCompatibleWith<Yp*, Tp*> : std::is_convertible<Yp*, Tp*>::type {};
+
+template <typename Up, size_t Nm>
+struct SpCompatibleWith<Up (*)[Nm], Up (*)[]> : std::true_type {};
+
+template <typename Up, size_t Nm>
+struct SpCompatibleWith<Up (*)[Nm], const Up (*)[]> : std::true_type {};
+
+template <typename Up, size_t Nm>
+struct SpCompatibleWith<Up (*)[Nm], volatile Up (*)[]> : std::true_type {};
+
+template <typename Up, size_t Nm>
+struct SpCompatibleWith<Up (*)[Nm], const volatile Up (*)[]> : std::true_type {};
+
 template <typename Up, size_t Nm, typename Yp, typename = void>
 struct SpIsConstructibleArrN : std::false_type {};
 
@@ -362,6 +380,21 @@ public:
 private:
     template <typename Yp>
     using SafeConv = typename std::enable_if<SpIsConstructible<Tp, Yp>::value>::type;
+
+    template <typename Yp, typename Res = void>
+    using Compatible = typename std::enable_if<SpCompatibleWith<Yp*, Tp*>::value, Res>::type;
+
+    template <typename Yp>
+    using Assignable = Compatible<Yp, SharedPtr&>;
+
+    template <typename Yp, typename Del, typename Res = void, typename Ptr = typename unique_ptr<Yp, Del>::pointer>
+    using UniqCompatible =
+        std::__enable_if_t<std::__and_<SpCompatibleWith<Yp*, Tp*>, std::is_convertible<Ptr, element_type*>,
+                                       std::is_move_constructible<Del>>::value,
+                           Res>;
+    
+    template <typename Yp, typename Del>
+    using UniqAssignable = UniqCompatible<Yp, Del, SharedPtr&>;
 
 public:
     using weak_type = WeakPtr<Tp>;
