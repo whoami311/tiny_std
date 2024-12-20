@@ -427,6 +427,25 @@ public:
     SharedPtr& operator=(const SharedPtr&) = default;
     ~SharedPtr() = default;
 
+    template <typename Yp, typename = Compatible<Yp>>
+    SharedPtr(const SharedPtr<Yp>& r) : ptr_(r.ptr_), ref_count_(r.ref_count_) {}
+
+    SharedPtr(SharedPtr&& r) : ptr_(r.ptr_), ref_count_() {
+        ref_count_.Swap(r.ref_count_);
+        r.ptr_ = nullptr;
+    }
+
+    template <typename Yp, typename = Compatible<Yp>>
+    SharedPtr(SharedPtr<Yp>&& r) : ptr_(r.ptr_) ,ref_count_() {
+        ref_count_.Swap(r.ref_count_);
+        r.ptr_ = nullptr;
+    }
+
+    template <typename Yp, typename = Compatible<Yp>>
+    explicit SharedPtr(const WeakPtr<Yp>& r) : ref_count_(r.ref_count) {
+        ptr_ = r.ptr_;
+    }
+
 private:
     template <typename Yp>
     using esft_base_t = decltype(EnableSharedFromThisBase(std::declval<const SharedCount&>(), std::declval<Yp*>()));
@@ -449,6 +468,91 @@ private:
 private:
     element_type* ptr_;
     SharedCount ref_count_;
+};
+
+template <typename Tp>
+class WeakPtr {
+    template <typename Yp, typename Res = void>
+    using Compatible = typename std::enable_if<SpCompatibleWith<Yp*, Tp*>::value, Res>::type;
+
+    template <typename Yp>
+    using Assignable = Compatible<Yp, WeakPtr&>;
+
+public:
+    using element_type = typename std::remove_extent<Tp>::type;
+
+    WeakPtr() : ptr_(nullptr), ref_count_() {}
+
+    WeakPtr(const WeakPtr&) = default;
+
+    ~WeakPtr() = default;
+
+    template <typename Yp, typename = Compatible<Yp>>
+    WeakPtr(const WeakPtr<Yp>& r) : ref_count_(r.ref_count_) {
+        ptr_ = r.Lock().Get();
+    }
+
+    template <typename Yp, typename = Compatible<Yp>>
+    WeakPtr(const SharedPtr<Yp>& r) : ptr_(r.ptr_), ref_count_(r.ref_count_) {}
+
+    WeakPtr(WeakPtr&& r) : ptr_(r.ptr_), ref_count_(std::move(r.ref_count_)) {
+        r.ptr_ = nullptr;
+    }
+
+    template <typename Yp, typename = Compatible<Yp>>
+    WeakPtr(WeakPtr<Yp>&& r) : ptr_(r.Lock().Get()), ref_count_(std::move(r.ref_count_)) {
+        r.ptr_ = nullptr;
+    } 
+
+    WeakPtr& operator=(const WeakPtr& r) = default;
+
+    template <typename Yp>
+    Assignable<Yp> operator=(const WeakPtr<Yp>& r) {
+        ptr_ = r.Lock().Get();
+        ref_count_ = r.ref_count_;
+        return *this;
+    }
+
+    template <typename Yp>
+    Assignable<Yp> operator=(const SharedPtr<Yp>& r) {
+        ptr_ = r.ptr_;
+        ref_count_ = r.ref_count_;
+        return *this;
+    }
+
+    WeakPtr& operator=(WeakPtr&& r) {
+        WeakPtr(std::move(r)).Swap(*this);
+        return *this;
+    }
+
+    template <typename Yp>
+    Assignable<Yp> operator=(WeakPtr<Yp>&& r) {
+        ptr_ = r.Lock().Get();
+        ref_count_ = std::move(r.ref_count_);
+        return *this;
+    }
+
+    SharedPtr<Tp>
+    Lock() const {
+        return SharedPtr<element_type>(*this, std::nothrow);
+    }
+
+    int UseCount() const {
+        return ref_count_.GetUseCount();
+    }
+
+    bool Expired() const {
+        return ref_count_.GetUseCount() == 0;
+    }
+
+    // template <typename Yp1>
+    // bool owner_before(const SharedPtr<Yp1>& rhs) const {
+    //     return ref_count_.Less(rhs.ref_count_);
+    // }
+
+private:
+    element_type* ptr_;
+    WeakCount ref_count_;
 };
 
 }  // namespace tiny_std
