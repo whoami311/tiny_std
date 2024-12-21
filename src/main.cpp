@@ -12,6 +12,7 @@
 #include <iostream>
 #include <algorithm>
 
+#include "smart_ptr/shared_ptr.h"
 #include "smart_ptr/unique_ptr.h"
 
 int main() {

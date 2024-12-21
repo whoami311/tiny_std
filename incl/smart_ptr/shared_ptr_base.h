@@ -91,6 +91,15 @@ class SharedPtr;
 template <typename Tp>
 class WeakPtr;
 
+template <typename Tp>
+class weak_ptr;
+
+template <typename Tp>
+class EnableSharedFromThis;
+
+template <typename Tp>
+class enable_shared_from_this;
+
 class WeakCount;
 
 // TODO:
@@ -392,7 +401,7 @@ private:
         std::__enable_if_t<std::__and_<SpCompatibleWith<Yp*, Tp*>, std::is_convertible<Ptr, element_type*>,
                                        std::is_move_constructible<Del>>::value,
                            Res>;
-    
+
     template <typename Yp, typename Del>
     using UniqAssignable = UniqCompatible<Yp, Del, SharedPtr&>;
 
@@ -436,7 +445,7 @@ public:
     }
 
     template <typename Yp, typename = Compatible<Yp>>
-    SharedPtr(SharedPtr<Yp>&& r) : ptr_(r.ptr_) ,ref_count_() {
+    SharedPtr(SharedPtr<Yp>&& r) : ptr_(r.ptr_), ref_count_() {
         ref_count_.Swap(r.ref_count_);
         r.ptr_ = nullptr;
     }
@@ -445,6 +454,78 @@ public:
     explicit SharedPtr(const WeakPtr<Yp>& r) : ref_count_(r.ref_count) {
         ptr_ = r.ptr_;
     }
+
+    // TODO: why ref_count_ in initialization list
+    template <typename Yp, typename Del, typename = UniqCompatible<Yp, Del>>
+    SharedPtr(unique_ptr<Yp, Del>&& r) : ptr_(r.get()), ref_count_() {
+        auto raw = std::__to_address(r.get());
+        ref_count_ = SharedCount(std::move(r));
+        EnableSharedFromThisWith(raw);
+    }
+
+    SharedPtr(nullptr_t) : SharedPtr() {}
+
+    template <typename Yp>
+    Assignable<Yp> operator=(const SharedPtr<Yp>& r) {
+        ptr_ = r.ptr_;
+        ref_count_ = r.ref_count_;
+        return *this;
+    }
+
+    SharedPtr& operator=(SharedPtr&& r) {
+        SharedPtr(std::move(r)).Swap(*this);
+        return *this;
+    }
+
+    template <typename Yp, typename Del>
+    UniqAssignable<Yp, Del> operator=(unique_ptr<Yp, Del>&& r) {
+        SharedPtr(std::move(r)).Swap(*this);
+        return *this;
+    }
+
+    void Reset() {
+        SharedPtr().Swap(*this);
+    }
+
+    template <typename Yp>
+    SafeConv<Yp> Reset(Yp* p) {
+        SharedPtr(p).Swap(*this);
+    }
+
+    template <typename Yp, typename Deleter>
+    SafeConv<Yp> Reset(Yp* p, Deleter d) {
+        SharedPtr(p, std::move(d)).Swap(*this);
+    }
+
+    element_type* Get() const {
+        return ptr_;
+    }
+
+    explicit operator bool() const {
+        return ptr_ != nullptr;
+    }
+
+    bool Unique() const {
+        return ref_count_.Unique();
+    }
+
+    int UseCount() const {
+        return ref_count_.GetUseCount();
+    }
+
+    void Swap(SharedPtr<Tp>& other) {
+        std::swap(ptr_, other.ptr_);
+        ref_count_.Swap(other.ref_count_);
+    }
+
+protected:
+    // TODO: allocate_shared
+
+    SharedPtr(const WeakPtr<Tp>& r, std::nothrow_t) : ref_count_(r.ref_count_, std::nothrow) {
+        ptr_ = ref_count_.GetUseCount() ? r.ptr_ : nullptr;
+    }
+
+    friend class WeakPtr<Tp>;
 
 private:
     template <typename Yp>
@@ -469,6 +550,67 @@ private:
     element_type* ptr_;
     SharedCount ref_count_;
 };
+
+template <typename Tp1, typename Tp2>
+inline bool operator==(const SharedPtr<Tp1>& a, const SharedPtr<Tp2>& b) {
+    return a.Get() == a.Get();
+}
+
+template <typename Tp>
+inline bool operator==(const SharedPtr<Tp>& a, nullptr_t) {
+    return !a;
+}
+
+template <typename Tp>
+inline bool operator==(nullptr_t, const SharedPtr<Tp>& a) {
+    return !a;
+}
+
+template <typename Tp1, typename Tp2>
+inline bool operator!=(const SharedPtr<Tp1>& a, const SharedPtr<Tp2>& b) {
+    return a.Get() != b.Get();
+}
+
+template <typename Tp>
+inline bool operator!=(const SharedPtr<Tp>& a, nullptr_t) {
+    return static_cast<bool>(a);
+}
+
+template <typename Tp>
+inline bool operator!=(nullptr_t, const SharedPtr<Tp>& a) {
+    return static_cast<bool>(a);
+}
+
+template <typename Tp>
+inline void swap(SharedPtr<Tp>& a, SharedPtr<Tp>& b) {
+    a.Swap(b);
+}
+
+template <typename Tp, typename Tp1>
+inline SharedPtr<Tp> static_pointer_cast(const SharedPtr<Tp1>& r) {
+    using Sp = SharedPtr<Tp>;
+    return Sp(r, static_cast<typename Sp::element_type*>(r.Get()));
+}
+
+template <typename Tp, typename Tp1>
+inline SharedPtr<Tp> const_pointer_cast(const SharedPtr<Tp1>& r) {
+    using Sp = SharedPtr<Tp>;
+    return Sp(r, const_cast<typename Sp::element_type*>(r.Get()));
+}
+
+template <typename Tp, typename Tp1>
+inline SharedPtr<Tp> dynamic_pointer_cast(const SharedPtr<Tp1>& r) {
+    using Sp = SharedPtr<Tp>;
+    if (auto* p = dynamic_cast<typename Sp::element_type*>(r.Get()))
+        return Sp(r, p);
+    return Sp();
+}
+
+template <typename Tp, typename Tp1>
+inline SharedPtr<Tp> reinterpret_pointer_cast(const SharedPtr<Tp1>& r) {
+    using Sp = SharedPtr<Tp>;
+    return Sp(r, reinterpret_cast<typename Sp::element_type*>(r.Get()));
+}
 
 template <typename Tp>
 class WeakPtr {
@@ -502,7 +644,7 @@ public:
     template <typename Yp, typename = Compatible<Yp>>
     WeakPtr(WeakPtr<Yp>&& r) : ptr_(r.Lock().Get()), ref_count_(std::move(r.ref_count_)) {
         r.ptr_ = nullptr;
-    } 
+    }
 
     WeakPtr& operator=(const WeakPtr& r) = default;
 
@@ -532,8 +674,7 @@ public:
         return *this;
     }
 
-    SharedPtr<Tp>
-    Lock() const {
+    SharedPtr<Tp> Lock() const {
         return SharedPtr<element_type>(*this, std::nothrow);
     }
 
@@ -550,9 +691,90 @@ public:
     //     return ref_count_.Less(rhs.ref_count_);
     // }
 
+    void Reset() {
+        WeakPtr().swap(*this);
+    }
+
+    void Swap(WeakPtr& s) {
+        std::swap(ptr_, s.ptr_);
+        ref_count_.Swap(s.ref_count_);
+    }
+
 private:
+    void Assign(Tp* ptr, const SharedCount& ref_count) {
+        if (UseCount() == 0) {
+            ptr_ = ptr;
+            ref_count_ = ref_count;
+        }
+    }
+
+    template <typename Tp1>
+    friend class SharedPtr;
+
+    // friend self ?
+    template <typename Tp1>
+    friend class WeakPtr;
+
+    friend class EnableSharedFromThis<Tp>;
+    friend class enable_shared_from_this<Tp>;
+
     element_type* ptr_;
     WeakCount ref_count_;
 };
+
+template <typename Tp>
+inline void swap(WeakPtr<Tp>& a, WeakPtr<Tp>& b) {
+    a.Swap(b);
+}
+
+template <typename Tp>
+class EnableSharedFromThis {
+    EnableSharedFromThis() {}
+
+    EnableSharedFromThis(const EnableSharedFromThis&) {}
+
+    EnableSharedFromThis& operator=(const EnableSharedFromThis&) {
+        return *this;
+    }
+
+    ~EnableSharedFromThis() {}
+
+public:
+    SharedPtr<Tp> SharedFromThis() {
+        return SharedPtr<Tp>(this->_weak_this_);
+    }
+
+    SharedPtr<const Tp>
+    SharedFromThis() const {
+        return SharedPtr<const Tp>(this->_weak_this_);
+    }
+
+    WeakPtr<Tp> WeakFromThis() {
+        return this->_weak_this_;
+    }
+
+    WeakPtr<const Tp> WeakFromThis() const {
+        return this->_weak_this_;
+    }
+
+private:
+    template <typename Tp1>
+    void WeakAssign(Tp* p, const SharedCount& n) const {
+        _weak_this_.Assign(p, n);
+    }
+
+private:
+    friend const EnableSharedFromThis* EnableSharedFromThisBase(const SharedCount&, const EnableSharedFromThis* p) {
+        return p;
+    }
+
+    template<typename>
+    friend class SharedPtr;
+
+    // named to avoid repeating names
+    mutable WeakPtr<Tp> _weak_this_;
+};
+
+// TODO: MakeShared
 
 }  // namespace tiny_std
