@@ -473,31 +473,31 @@ public:
     }
 
     SharedPtr& operator=(SharedPtr&& r) {
-        SharedPtr(std::move(r)).Swap(*this);
+        SharedPtr(std::move(r)).swap(*this);
         return *this;
     }
 
     template <typename Yp, typename Del>
     UniqAssignable<Yp, Del> operator=(unique_ptr<Yp, Del>&& r) {
-        SharedPtr(std::move(r)).Swap(*this);
+        SharedPtr(std::move(r)).swap(*this);
         return *this;
     }
 
-    void Reset() {
-        SharedPtr().Swap(*this);
+    void reset() {
+        SharedPtr().swap(*this);
     }
 
     template <typename Yp>
-    SafeConv<Yp> Reset(Yp* p) {
-        SharedPtr(p).Swap(*this);
+    SafeConv<Yp> reset(Yp* p) {
+        SharedPtr(p).swap(*this);
     }
 
     template <typename Yp, typename Deleter>
-    SafeConv<Yp> Reset(Yp* p, Deleter d) {
-        SharedPtr(p, std::move(d)).Swap(*this);
+    SafeConv<Yp> reset(Yp* p, Deleter d) {
+        SharedPtr(p, std::move(d)).swap(*this);
     }
 
-    element_type* Get() const {
+    element_type* get() const {
         return ptr_;
     }
 
@@ -505,15 +505,15 @@ public:
         return ptr_ != nullptr;
     }
 
-    bool Unique() const {
+    bool unique() const {
         return ref_count_.Unique();
     }
 
-    int UseCount() const {
+    int use_count() const {
         return ref_count_.GetUseCount();
     }
 
-    void Swap(SharedPtr<Tp>& other) {
+    void swap(SharedPtr<Tp>& other) {
         std::swap(ptr_, other.ptr_);
         ref_count_.Swap(other.ref_count_);
     }
@@ -553,7 +553,7 @@ private:
 
 template <typename Tp1, typename Tp2>
 inline bool operator==(const SharedPtr<Tp1>& a, const SharedPtr<Tp2>& b) {
-    return a.Get() == a.Get();
+    return a.get() == a.get();
 }
 
 template <typename Tp>
@@ -568,7 +568,7 @@ inline bool operator==(nullptr_t, const SharedPtr<Tp>& a) {
 
 template <typename Tp1, typename Tp2>
 inline bool operator!=(const SharedPtr<Tp1>& a, const SharedPtr<Tp2>& b) {
-    return a.Get() != b.Get();
+    return a.get() != b.get();
 }
 
 template <typename Tp>
@@ -583,25 +583,25 @@ inline bool operator!=(nullptr_t, const SharedPtr<Tp>& a) {
 
 template <typename Tp>
 inline void swap(SharedPtr<Tp>& a, SharedPtr<Tp>& b) {
-    a.Swap(b);
+    a.swap(b);
 }
 
 template <typename Tp, typename Tp1>
 inline SharedPtr<Tp> static_pointer_cast(const SharedPtr<Tp1>& r) {
     using Sp = SharedPtr<Tp>;
-    return Sp(r, static_cast<typename Sp::element_type*>(r.Get()));
+    return Sp(r, static_cast<typename Sp::element_type*>(r.get()));
 }
 
 template <typename Tp, typename Tp1>
 inline SharedPtr<Tp> const_pointer_cast(const SharedPtr<Tp1>& r) {
     using Sp = SharedPtr<Tp>;
-    return Sp(r, const_cast<typename Sp::element_type*>(r.Get()));
+    return Sp(r, const_cast<typename Sp::element_type*>(r.get()));
 }
 
 template <typename Tp, typename Tp1>
 inline SharedPtr<Tp> dynamic_pointer_cast(const SharedPtr<Tp1>& r) {
     using Sp = SharedPtr<Tp>;
-    if (auto* p = dynamic_cast<typename Sp::element_type*>(r.Get()))
+    if (auto* p = dynamic_cast<typename Sp::element_type*>(r.get()))
         return Sp(r, p);
     return Sp();
 }
@@ -609,7 +609,7 @@ inline SharedPtr<Tp> dynamic_pointer_cast(const SharedPtr<Tp1>& r) {
 template <typename Tp, typename Tp1>
 inline SharedPtr<Tp> reinterpret_pointer_cast(const SharedPtr<Tp1>& r) {
     using Sp = SharedPtr<Tp>;
-    return Sp(r, reinterpret_cast<typename Sp::element_type*>(r.Get()));
+    return Sp(r, reinterpret_cast<typename Sp::element_type*>(r.get()));
 }
 
 template <typename Tp>
@@ -631,7 +631,7 @@ public:
 
     template <typename Yp, typename = Compatible<Yp>>
     WeakPtr(const WeakPtr<Yp>& r) : ref_count_(r.ref_count_) {
-        ptr_ = r.Lock().Get();
+        ptr_ = r.Lock().get();
     }
 
     template <typename Yp, typename = Compatible<Yp>>
@@ -642,7 +642,7 @@ public:
     }
 
     template <typename Yp, typename = Compatible<Yp>>
-    WeakPtr(WeakPtr<Yp>&& r) : ptr_(r.Lock().Get()), ref_count_(std::move(r.ref_count_)) {
+    WeakPtr(WeakPtr<Yp>&& r) : ptr_(r.Lock().get()), ref_count_(std::move(r.ref_count_)) {
         r.ptr_ = nullptr;
     }
 
@@ -650,7 +650,7 @@ public:
 
     template <typename Yp>
     Assignable<Yp> operator=(const WeakPtr<Yp>& r) {
-        ptr_ = r.Lock().Get();
+        ptr_ = r.Lock().get();
         ref_count_ = r.ref_count_;
         return *this;
     }
@@ -663,13 +663,13 @@ public:
     }
 
     WeakPtr& operator=(WeakPtr&& r) {
-        WeakPtr(std::move(r)).Swap(*this);
+        WeakPtr(std::move(r)).swap(*this);
         return *this;
     }
 
     template <typename Yp>
     Assignable<Yp> operator=(WeakPtr<Yp>&& r) {
-        ptr_ = r.Lock().Get();
+        ptr_ = r.Lock().get();
         ref_count_ = std::move(r.ref_count_);
         return *this;
     }
@@ -678,7 +678,7 @@ public:
         return SharedPtr<element_type>(*this, std::nothrow);
     }
 
-    int UseCount() const {
+    int use_count() const {
         return ref_count_.GetUseCount();
     }
 
@@ -691,18 +691,18 @@ public:
     //     return ref_count_.Less(rhs.ref_count_);
     // }
 
-    void Reset() {
+    void reset() {
         WeakPtr().swap(*this);
     }
 
-    void Swap(WeakPtr& s) {
+    void swap(WeakPtr& s) {
         std::swap(ptr_, s.ptr_);
         ref_count_.Swap(s.ref_count_);
     }
 
 private:
     void Assign(Tp* ptr, const SharedCount& ref_count) {
-        if (UseCount() == 0) {
+        if (use_count() == 0) {
             ptr_ = ptr;
             ref_count_ = ref_count;
         }
@@ -724,7 +724,7 @@ private:
 
 template <typename Tp>
 inline void swap(WeakPtr<Tp>& a, WeakPtr<Tp>& b) {
-    a.Swap(b);
+    a.swap(b);
 }
 
 template <typename Tp>
