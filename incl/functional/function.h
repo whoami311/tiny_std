@@ -195,5 +195,9 @@ class function<Res(ArgTypes...)> : public MaybeUnaryOrBinaryFunction<Res, ArgTyp
     // if the decayed type is the current specialization of std::function.
     template <typename Func, bool Self = std::is_same<std::__remove_cvref_t<Func>, function>::value>
     using Decay = typename std::enable_if<!Self, std::decay<Func>>::type;
+
+    template <typename Func, typename DFunc = Decay<Func>,
+    typename Res2 = std::invoke_result<DFunc&, ArgTypes...>>
+    struct Callable : std::is_invocable<Res2, Res>::type {};
 };
 }  // namespace tiny_std
