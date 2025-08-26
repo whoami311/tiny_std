@@ -11,8 +11,6 @@
 
 #include <type_traits>
 
-#include "ref_wrap.h"
-
 namespace tiny_std {
 
 class UndefinedClass;
@@ -190,7 +188,7 @@ struct TargetHandler<Signature, Functor, false> : FunctionHandler<void, void> {}
  *  @since C++11
  */
 template <typename Res, typename... ArgTypes>
-class function<Res(ArgTypes...)> : public MaybeUnaryOrBinaryFunction<Res, ArgTypes...>, private FunctionBase {
+class function<Res(ArgTypes...)> : private FunctionBase {
     // Equivalent to std::decay_t except that it produces an invalid type
     // if the decayed type is the current specialization of std::function.
     template <typename Func, bool Self = std::is_same<std::__remove_cvref_t<Func>, function>::value>
