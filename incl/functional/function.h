@@ -159,6 +159,7 @@ public:
     };
 
     FunctionBase() = default;
+
     ~FunctionBase() {
         if (manager_)
             manager_(functor_, functor_, DESTROY_FUNCTOR);
@@ -199,6 +200,11 @@ public:
     static Res Invoke(const AnyData& functor, ArgTypes&&... args) {
         return std::__invoke_r<Res>(*Base::GetPointer(functor), std::forward<ArgTypes>(args)...);
     }
+
+    template <typename Fn>
+    static constexpr bool NoThrowInit() noexcept {
+        return std::__and_ < typename Base::LocalStorage, std::is_nothrow_constructible<Functor, Fn>>::value;
+    }
 };
 
 // Specialization for invalid types
@@ -234,5 +240,97 @@ class function<Res(ArgTypes...)> : private FunctionBase {
 
     template <typename Func, typename DFunc = Decay<Func>, typename Res2 = std::invoke_result<DFunc&, ArgTypes...>>
     struct Callable : std::is_invocable<Res2, Res>::type {};
+
+    template <typename Cond, typename Tp = void>
+    using Requires = std::__enable_if_t<Cond::value, Tp>;
+
+    template <typename Functor>
+    using Handler = FunctionHandler<Res(ArgTypes...), std::__decay_t<Functor>>;
+
+public:
+    using result_type = Res;
+
+    // [3.7.2.1] construct/copy/destroy
+
+    /**
+     *  @brief Default construct creates an empty function call wrapper.
+     *  @post `!(bool)*this`
+     */
+    function() noexcept : FunctionBase() {}
+
+    /**
+     *  @brief Creates an empty function call wrapper.
+     *  @post @c !(bool)*this
+     */
+    function(nullptr_t) noexcept : FunctionBase() {}
+
+    /**
+     *  @brief %Function copy constructor.
+     *  @param x A %function object with identical call signature.
+     *  @post `bool(*this) == bool(x)`
+     *
+     *  The newly-created %function contains a copy of the target of
+     *  `x` (if it has one).
+     */
+    function(const function& x) : FunctionBase() {
+        if (static_cast<bool>(x)) {
+            x.Manager(functor_, x.functor_, CLONE_FUNCTOR);
+            invoker_ = x.invoker_;
+            manager_ = x.manager_;
+        }
+    }
+
+    /**
+     *  @brief %Function move constructor.
+     *  @param x A %function object rvalue with identical call signature.
+     *
+     *  The newly-created %function contains the target of `x`
+     *  (if it has one).
+     */
+    function(function&& x) noexcept : FunctionBase(), invoker_(x.invoker_) {
+        if (static_cast<bool>(x)) {
+            functor_ = x.functor_;
+            manager_ = x.manager_;
+            x.manager_ = nullptr;
+            x.invoker_ = nullptr;
+        }
+    }
+
+    /**
+     *  @brief Builds a %function that targets a copy of the incoming
+     *  function object.
+     *  @param f A %function object that is callable with parameters of
+     *  type `ArgTypes...` and returns a value convertible to `Res`.
+     *
+     *  The newly-created %function object will target a copy of
+     *  `f`. If `f` is `reference_wrapper<F>`, then this function
+     *  object will contain a reference to the function object `f.get()`.
+     *  If `f` is a null function pointer, null pointer-to-member, or
+     *  empty `std::function`, the newly-created object will be empty.
+     *
+     *  If `f` is a non-null function pointer or an object of type
+     *  `reference_wrapper<F>`, this function will not throw.
+     */
+    // 2774. std::function construction vs assignment
+    template <typename Functor, typename Constraints = Requires<Callable<Functor>>>
+    function(Functor&& f) noexcept(Handler<Functor>::template NothrowInit<Functor>()) : FunctionBase() {
+        static_assert(std::is_copy_constructible<std::__decay_t<Functor>>::value,
+                      "std::function target must be copy-constructible");
+        static_assert(std::is_constructible<std::__decay_t<Functor>, Functor>::value,
+                      "std::function target must be constructible from the constructor argument");
+
+        using MyHandler = Handler<Functor>;
+
+        if (MyHandler::NotEmptyFunction(f)) {
+            MyHandler::InitFunctor(functor_, std::forward<Functor>(f));
+            invoker_ = &MyHandler::invoke_;
+            manager_ = &MyHandler::manager_;
+        }
+    }
+
+private:
+    using InvokerType = Res(*)(const AnyData&, ArgTypes&&...);
+    InvokerType invoker_ = nullptr;
 };
+
 }  // namespace tiny_std
