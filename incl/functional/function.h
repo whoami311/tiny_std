@@ -132,8 +132,8 @@ public:
         }
 
         template <typename Fn>
-        static void InitFunctor(AnyData& functor, Fn&& f) noexcept(std::__and_ < LocalStorage,
-                                                                   std::is_nothrow_constructible<Functor, Fn>::value) {
+        static void InitFunctor(AnyData& functor, Fn&& f) noexcept(
+            std::__and_<LocalStorage, std::is_nothrow_constructible<Functor, Fn>>::value) {
             Create(functor, std::forward<Fn>(f), LocalStorage());
         }
 
