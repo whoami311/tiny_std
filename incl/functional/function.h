@@ -13,6 +13,15 @@
 
 namespace tiny_std {
 
+/**
+ *  Trait identifying "location-invariant" types, meaning that the
+ *  address of the object (or any of its members) will not escape.
+ *  Trivially copyable types are location-invariant and users can
+ *  specialize this trait for other types.
+ */
+template <typename _Tp>
+struct IsLocationInvariant : std::is_trivially_copyable<_Tp>::type {};
+
 class UndefinedClass;
 
 union NocopyTypes {
@@ -58,23 +67,48 @@ class function;
 /// Base class of all polymorphic function object wrappers.
 class FunctionBase {
 public:
+    static const size_t max_size_ = sizeof(NocopyTypes);
+    static const size_t max_align_ = __alignof__(NocopyTypes);
+
     template <typename Functor>
     class BaseManager {
     protected:
+        static const bool stored_locally_ =
+            (IsLocationInvariant<Functor>::value && sizeof(Functor) <= max_size_ &&
+             __alignof__(Functor) <= max_align_ && (max_align_ % __alignof__(Functor) == 0));
+
+        using LocalStorage = std::integral_constant<bool, stored_locally_>;
+
         // Retrieve a pointer to the function object
         static Functor* GetPointer(const AnyData& source) noexcept {
-            return source.Access<Functor*>();
+            if constexpr (stored_locally_) {
+                const Functor& f = source.Access<Functor>();
+                return const_cast<Functor*>(std::__addressof(f));
+            } else  // have stored a pointer
+                return source.Access<Functor*>();
         }
 
     private:
+        // Construct a location-invariant function object that fits within
+        // an _Any_data structure.
+        template <typename Fn>
+        static void Create(AnyData& dest, Fn&& f, std::true_type) {
+            ::new (dest.Access()) Functor(std::forward<Fn>(f));
+        }
+
         // Construct a function object on the heap and store a pointer.
         template <typename Fn>
-        static void Create(AnyData& dest, Fn&& f) {
+        static void Create(AnyData& dest, Fn&& f, std::false_type) {
             dest.Access<Functor*>() = new Functor(std::forward<Fn>(f));
         }
 
+        // Destroy an object stored in the internal buffer.
+        static void Destroy(AnyData& victim, std::true_type) {
+            victim.Access<Functor>().~Functor();
+        }
+
         // Destroy an object located on the heap.
-        static void _M_destroy(AnyData& victim) {
+        static void Destroy(AnyData& victim, std::false_type) {
             delete victim.Access<Functor*>();
         }
 
@@ -90,13 +124,17 @@ public:
                 case CLONE_FUNCTOR:
                     InitFunctor(dest, *const_cast<const Functor*>(GetPointer(source)));
                     break;
+                case DESTROY_FUNCTOR:
+                    Destroy(dest, LocalStorage());
+                    break;
             }
             return false;
         }
 
         template <typename Fn>
-        static void InitFunctor(AnyData& functor, Fn&& f) {
-            Create(functor, std::forward<Fn>(f));
+        static void InitFunctor(AnyData& functor, Fn&& f) noexcept(std::__and_ < LocalStorage,
+                                                                   std::is_nothrow_constructible<Functor, Fn>::value) {
+            Create(functor, std::forward<Fn>(f), LocalStorage());
         }
 
         template <typename Signature>
@@ -194,8 +232,7 @@ class function<Res(ArgTypes...)> : private FunctionBase {
     template <typename Func, bool Self = std::is_same<std::__remove_cvref_t<Func>, function>::value>
     using Decay = typename std::enable_if<!Self, std::decay<Func>>::type;
 
-    template <typename Func, typename DFunc = Decay<Func>,
-    typename Res2 = std::invoke_result<DFunc&, ArgTypes...>>
+    template <typename Func, typename DFunc = Decay<Func>, typename Res2 = std::invoke_result<DFunc&, ArgTypes...>>
     struct Callable : std::is_invocable<Res2, Res>::type {};
 };
 }  // namespace tiny_std
