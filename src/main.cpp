@@ -14,8 +14,12 @@
 
 #include "smart_ptr/shared_ptr.h"
 #include "smart_ptr/unique_ptr.h"
+#include "functional/function.h"
+#include <functional>
 
 int main() {
+    std::function<void()> f;
+    tiny_std::function<void()> t;
     std::cout << "hello world" << std::endl;
     return 0;
 }

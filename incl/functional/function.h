@@ -19,8 +19,8 @@ namespace tiny_std {
  *  Trivially copyable types are location-invariant and users can
  *  specialize this trait for other types.
  */
-template <typename _Tp>
-struct IsLocationInvariant : std::is_trivially_copyable<_Tp>::type {};
+template <typename Tp>
+struct IsLocationInvariant : std::is_trivially_copyable<Tp>::type {};
 
 class UndefinedClass;
 
@@ -90,7 +90,7 @@ public:
 
     private:
         // Construct a location-invariant function object that fits within
-        // an _Any_data structure.
+        // an AnyData structure.
         template <typename Fn>
         static void Create(AnyData& dest, Fn&& f, std::true_type) {
             ::new (dest.Access()) Functor(std::forward<Fn>(f));
@@ -203,7 +203,7 @@ public:
 
     template <typename Fn>
     static constexpr bool NoThrowInit() noexcept {
-        return std::__and_ < typename Base::LocalStorage, std::is_nothrow_constructible<Functor, Fn>>::value;
+        return std::__and_<typename Base::LocalStorage, std::is_nothrow_constructible<Functor, Fn>>::value;
     }
 };
 
@@ -217,7 +217,7 @@ public:
 };
 
 // Avoids instantiating ill-formed specializations of _Function_handler
-// in std::function<_Signature>::target<_Functor>().
+// in std::function<Signature>::target<Functor>().
 // e.g. _Function_handler<Sig, void()> and _Function_handler<Sig, void>
 // would be ill-formed.
 template <typename Signature, typename Functor, bool valid = std::is_object<Functor>::value>
@@ -328,9 +328,268 @@ public:
         }
     }
 
+    /**
+     *  @brief Function assignment operator.
+     *  @param x A %function with identical call signature.
+     *  @post `(bool)*this == (bool)x`
+     *  @returns `*this`
+     *
+     *  The target of `x` is copied to `*this`. If `x` has no
+     *  target, then `*this` will be empty.
+     *
+     *  If `x` targets a function pointer or a reference to a function
+     *  object, then this operation will not throw an exception.
+     */
+    function& operator=(const function& x) {
+        function(x).swap(*this);
+        return *this;
+    }
+
+    /**
+     *  @brief Function move-assignment operator.
+     *  @param x A %function rvalue with identical call signature.
+     *  @returns `*this`
+     *
+     *  The target of `x` is moved to `*this`. If `x` has no
+     *  target, then `*this` will be empty.
+     *
+     *  If `x` targets a function pointer or a reference to a function
+     *  object, then this operation will not throw an exception.
+     */
+    function& operator=(function&& x) noexcept {
+        function(std::move(x)).swap(*this);
+        return *this;
+    }
+
+    /**
+     *  @brief Function assignment to empty.
+     *  @post `!(bool)*this`
+     *  @returns `*this`
+     *
+     *  The target of `*this` is deallocated, leaving it empty.
+     */
+    function& operator=(nullptr_t) noexcept {
+        if (manager_) {
+            manager_(functor_, functor_, DESTROY_FUNCTOR);
+            manager_ = nullptr;
+            invoker_ = nullptr;
+        }
+        return *this;
+    }
+
+    /**
+     *  @brief Function assignment to a new target.
+     *  @param f  A function object that is callable with parameters of
+     *              type  `ArgTypes...` and returns a value convertible
+     *              to `Res`.
+     *  @return `*this`
+     *  @since C++11
+     *
+     *  This function object wrapper will target a copy of `f`. If `f`
+     *  is `reference_wrapper<F>`, then this function object will contain
+     *  a reference to the function object `f.get()`. If `f` is a null
+     *  function pointer or null pointer-to-member, this object will be
+     *  empty.
+     *
+     *  If `f` is a non-null function pointer or an object of type
+     *  `reference_wrapper<F>`, this function will not throw.
+     */
+    template <typename Functor>
+    Requires<Callable<Functor>, function&> operator=(Functor&& f) noexcept(
+        Handler<Functor>::template NothrowInit<Functor>()) {
+        function(std::forward<Functor>(f)).swap(*this);
+        return *this;
+    }
+
+    /// @overload
+    template <typename Functor>
+    function& operator=(std::reference_wrapper<Functor> f) noexcept {
+        function(f).swap(*this);
+        return *this;
+    }
+
+    // [3.7.2.2] function modifiers
+
+    /**
+     *  @brief Swap the targets of two %function objects.
+     *  @param x A %function with identical call signature.
+     *
+     *  Swap the targets of `this` function object and `f`.
+     *  This function will not throw exceptions.
+     */
+    void swap(function& x) noexcept {
+        std::swap(functor_, x.functor_);
+        std::swap(manager_, x.manager_);
+        std::swap(invoker_, x.invoker_);
+    }
+
+    // [3.7.2.3] function capacity
+
+    /**
+     *  @brief Determine if the %function wrapper has a target.
+     *
+     *  @return `true` when this function object contains a target,
+     *  or `false` when it is empty.
+     *
+     *  This function will not throw exceptions.
+     */
+    explicit operator bool() const noexcept {
+        return !Empty();
+    }
+
+    // [3.7.2.4] function invocation
+
+    /**
+     *  @brief Invokes the function targeted by `*this`.
+     *  @returns the result of the target.
+     *
+     *  The function call operator invokes the target function object
+     *  stored by `this`.
+     */
+    Res operator()(ArgTypes... args) const {
+        return invoker_(functor_, std::forward<ArgTypes>(args)...);
+    }
+
+    // [3.7.2.5] function target access
+    /**
+     *  @brief Determine the type of the target of this function object
+     *  wrapper.
+     *
+     *  @returns the type identifier of the target function object, or
+     *  `typeid(void)` if `!(bool)*this`.
+     *
+     *  This function will not throw exceptions.
+     */
+    const std::type_info& target_type() const noexcept {
+        if (manager_) {
+            AnyData typeinfo_result;
+            manager_(typeinfo_result, functor_, GET_TYPE_INFO);
+            if (auto ti = typeinfo_result.Access<const std::type_info*>())
+                return *ti;
+        }
+        return typeid(void);
+    }
+
+    /**
+     *  @brief Access the stored target function object.
+     *
+     *  @return Returns a pointer to the stored target function object,
+     *  if `typeid(Functor).equals(target_type())`; otherwise, a null
+     *  pointer.
+     *
+     * This function does not throw exceptions.
+     *
+     * @{
+     */
+    template <typename Functor>
+    Functor* target() noexcept {
+        const function* const_this = this;
+        const Functor* func = const_this->template target<Functor>();
+        // If is_function_v<Functor> is true then const_cast<Functor*>
+        // would be ill-formed, so use *const_cast<Functor**> instead.
+        return *const_cast<Functor**>(&func);
+    }
+
+    template <typename Functor>
+    const Functor* target() const noexcept {
+        if constexpr (std::is_object<Functor>::value) {
+            // For C++11 and C++14 if-constexpr is not used above, so
+            // TargetHandler avoids ill-formed _Function_handler types.
+            using Handler = TargetHandler<Res(ArgTypes...), Functor>;
+
+            if (manager_ == &Handler::manager_ || (manager_ && typeid(Functor) == target_type())) {
+                AnyData ptr;
+                manager_(ptr, functor_, GET_FUNCTOR_PTR);
+                return ptr.Access<const Functor*>();
+            }
+        }
+        return nullptr;
+    }
+    /// @}
+
 private:
-    using InvokerType = Res(*)(const AnyData&, ArgTypes&&...);
+    using InvokerType = Res (*)(const AnyData&, ArgTypes&&...);
     InvokerType invoker_ = nullptr;
 };
+
+template <typename>
+struct FunctionGuideHelper {};
+
+template <typename Res, typename Tp, bool Nx, typename... Args>
+struct FunctionGuideHelper<Res (Tp::*)(Args...) noexcept(Nx)> {
+    using type = Res(Args...);
+};
+
+template <typename Res, typename Tp, bool Nx, typename... Args>
+struct FunctionGuideHelper<Res (Tp::*)(Args...) & noexcept(Nx)> {
+    using type = Res(Args...);
+};
+
+template <typename Res, typename Tp, bool Nx, typename... Args>
+struct FunctionGuideHelper<Res (Tp::*)(Args...) const noexcept(Nx)> {
+    using type = Res(Args...);
+};
+
+template <typename Res, typename Tp, bool Nx, typename... Args>
+struct FunctionGuideHelper<Res (Tp::*)(Args...) const & noexcept(Nx)> {
+    using type = Res(Args...);
+};
+
+template <typename Fn, typename Op>
+using FunctionGuide = typename FunctionGuideHelper<Op>::type;
+
+template <typename Res, typename... ArgTypes>
+function(Res (*)(ArgTypes...)) -> function<Res(ArgTypes...)>;
+
+template <typename Fn, typename Signature = FunctionGuide<Fn, decltype(&Fn::operator())>>
+function(Fn) -> function<Signature>;
+
+// [20.7.15.2.6] null pointer comparisons
+
+/**
+ *  @brief Test whether a polymorphic function object wrapper is empty.
+ *  @returns `true` if the wrapper has no target, `false` otherwise
+ *
+ *  This function will not throw exceptions.
+ */
+template <typename Res, typename... Args>
+inline bool operator==(const function<Res(Args...)>& f, nullptr_t) noexcept {
+    return !static_cast<bool>(f);
+}
+
+/// @overload
+template <typename Res, typename... Args>
+inline bool operator==(nullptr_t, const function<Res(Args...)>& f) noexcept {
+    return !static_cast<bool>(f);
+}
+
+/**
+ *  @brief Test whether a polymorphic function object wrapper is non-empty.
+ *  @returns `false` if the wrapper has no target, `true` otherwise
+ *
+ *  This function will not throw exceptions.
+ */
+template <typename Res, typename... Args>
+inline bool operator!=(const function<Res(Args...)>& f, nullptr_t) noexcept {
+    return static_cast<bool>(f);
+}
+
+/// @overload
+template <typename Res, typename... Args>
+inline bool operator!=(nullptr_t, const function<Res(Args...)>& f) noexcept {
+    return static_cast<bool>(f);
+}
+
+// [20.7.15.2.7] specialized algorithms
+
+/**
+ *  @brief Swap the targets of two polymorphic function object wrappers.
+ *
+ *  This function will not throw exceptions.
+ */
+template <typename Res, typename... Args>
+inline void swap(function<Res(Args...)>& x, function<Res(Args...)>& y) noexcept {
+    x.swap(y);
+}
 
 }  // namespace tiny_std
